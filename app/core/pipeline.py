@@ -57,8 +57,9 @@ def deterministic_report(features: list[dict], candidates: list[dict], spec: Spe
         for ev in (top["evidence"] if top else [])
         if ev["matched"] and not ev["atmospheric"]
     ]
+    n_entries = len(load_library()["entries"])
     head = (
-        f"检出 {len(features)} 个吸收特征；与参考库 17 类端元匹配后，"
+        f"检出 {len(features)} 个吸收特征；与参考库 {n_entries} 类端元匹配后，"
         f"最优候选为 {top['name_cn']}（{top['name']}，{top['category_cn']}），得分 {top['score']:.3f}。"
         if top
         else "未检出有效特征。"
@@ -116,9 +117,9 @@ def deterministic_report(features: list[dict], candidates: list[dict], spec: Spe
 
 def analyze(spec: Spectrum) -> AnalysisResult:
     t0 = time.perf_counter()
-    rs, cr, cr_local, continuum = preprocess(spec)
+    rs, cr, cr_local, continuum, env, noise_sigma = preprocess(spec)
     t1 = time.perf_counter()
-    features = extract_features(cr_local.wavelength, cr_local.reflectance)
+    features = extract_features(cr_local.wavelength, cr_local.reflectance, noise_sigma, env)
     t2 = time.perf_counter()
     candidates = match(features, cr.wavelength, cr.reflectance, top_k=3)
     t3 = time.perf_counter()

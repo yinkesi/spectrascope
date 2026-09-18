@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from collections import Counter
+
 import numpy as np
 
 NM_MIN, NM_MAX = 350.0, 2500.0
@@ -31,41 +33,72 @@ class Spectrum:
 
 
 def _parse_numeric_block(lines: list[str]) -> tuple[np.ndarray, np.ndarray] | None:
-    """Find the first column pair in `lines` that parses as increasing wl + reflectance."""
-    for width in (2, 3):
-        for start in range(0, min(30, len(lines))):
-            cols: list[list[float]] = [[] for _ in range(width)]
-            ok = True
-            used = 0
-            for ln in lines[start:]:
-                parts = ln.replace(";", ",").replace("\t", ",").split(",")
-                vals: list[float] = []
-                for p in parts:
-                    p = p.strip()
-                    try:
-                        vals.append(float(p))
-                    except ValueError:
-                        continue
-                if len(vals) < width:
+    """Find the (wavelength, reflectance) column pair in a numeric table.
+
+    Handles: header/comment lines, tab/semicolon/comma/whitespace separators,
+    ragged rows (uses the modal column count), an index column next to the
+    data (e.g. `idx, wl, refl`), wavelength ascending OR descending, nm or µm,
+    0-1 or percent reflectance. Percent detection is heuristic — a dark-target
+    percent export (median ≤ ~1.1%) is indistinguishable from 0-1 data and is
+    documented as a known limitation.
+    """
+    rows: list[list[float]] = []
+    for ln in lines:
+        vals: list[float] = []
+        for tok in ln.replace(";", " ").replace(",", " ").replace("\t", " ").split():
+            try:
+                vals.append(float(tok))
+            except ValueError:
+                pass
+        if len(vals) >= 2:
+            rows.append(vals)
+    if len(rows) < 10:
+        return None
+    ncols, _nrows = Counter(len(r) for r in rows).most_common(1)[0]
+    sel = [r for r in rows if len(r) == ncols]
+    if len(sel) < 10:
+        return None
+    cols = [np.asarray(c, dtype=float) for c in zip(*sel)]
+
+    def try_pair(a: int, b: int, strict_wl: bool) -> tuple[np.ndarray, np.ndarray] | None:
+        wa = cols[a]
+        d = np.diff(wa)
+        if not (np.all(d > 0) or np.all(d < 0)):
+            return None
+        median = float(np.median(wa))
+        span = float(wa.max() - wa.min())
+        is_um = median < 3.0
+        if is_um:
+            if span < 0.05:
+                return None
+        elif strict_wl and not (200.0 <= median <= 5000.0 and span >= 50.0):
+            return None
+        elif not strict_wl and not (10.0 <= median and span >= 50.0):
+            return None
+        rb = cols[b]
+        rmed = float(np.median(rb))
+        if not (0.0 <= rmed <= 110.0 and float(np.min(rb)) >= -5.0):
+            return None
+        if rmed > 1.1 or float(rb.max()) > 120.0:
+            rb = rb / 100.0  # percent reflectance
+        wl = wa * 1000.0 if is_um else wa
+        if np.all(d < 0):  # descending export -> flip to ascending
+            wl, rb = wl[::-1], rb[::-1]
+        return wl, rb
+
+    # passes in priority order: genuine reflectance with spectral-range wl,
+    # then percent reflectance, then any sane pair (index-like wl last resort)
+    for rf_cap, strict_wl in ((1.5, True), (110.0, True), (110.0, False)):
+        for a in range(ncols):
+            for b in range(ncols):
+                if a == b:
                     continue
-                for i in range(width):
-                    cols[i].append(vals[i])
-                used += 1
-                if used >= 4000:
-                    break
-            if used < 10:
-                ok = False
-            if ok:
-                wl = np.asarray(cols[0])
-                rf = np.asarray(cols[1])
-                if wl.size >= 10 and np.all(np.diff(wl) > 0) and rf.size == wl.size:
-                    # Wavelengths in µm (0.35–2.6) are common in USGS exports.
-                    if np.median(wl) < 3.0:
-                        wl = wl * 1000.0
-                    # Some instruments export percent reflectance.
-                    if np.nanmedian(rf) > 1.5:
-                        rf = rf / 100.0
-                    return wl, rf
+                rb_med = float(np.median(cols[b]))
+                if not (0.0 <= rb_med <= rf_cap):
+                    continue
+                res = try_pair(a, b, strict_wl)
+                if res is not None:
+                    return res
     return None
 
 
@@ -89,6 +122,7 @@ def parse_spectrum_text(text: str, name: str = "upload") -> Spectrum:
 
 
 def parse_spectrum_bytes(data: bytes, name: str) -> Spectrum:
+    last_error: ValueError | None = None
     for enc in ("utf-8-sig", "utf-8", "gb18030", "latin-1"):
         try:
             return parse_spectrum_text(data.decode(enc), name=name)
@@ -98,7 +132,7 @@ def parse_spectrum_bytes(data: bytes, name: str) -> Spectrum:
             if "empty file" in str(exc):
                 raise
             last_error = exc
-    raise ValueError(str(last_error))
+    raise ValueError(str(last_error or "could not decode file"))
 
 
 def demo_samples() -> dict[str, dict]:

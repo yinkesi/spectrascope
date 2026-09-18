@@ -13,6 +13,17 @@ from .spectra import Spectrum
 STEP_NM = 1.0
 
 
+def estimate_noise_sigma(reflectance: np.ndarray) -> float:
+    """Robust noise estimate from second differences of the RAW (unsmoothed)
+    resampled reflectance. MAD-based so spikes don't dominate; sqrt(6)
+    normalizes the second difference of white noise."""
+    d2 = np.diff(reflectance, n=2)
+    if d2.size < 8:
+        return 0.0
+    med = np.median(d2)
+    return float(1.4826 * np.median(np.abs(d2 - med)) / np.sqrt(6.0))
+
+
 def resample(spec: Spectrum, step: float = STEP_NM) -> Spectrum:
     grid = np.arange(
         np.ceil(spec.wavelength[0] / step) * step,
@@ -89,10 +100,12 @@ def local_continuum_remove(spec: Spectrum, window: int = 301) -> tuple[Spectrum,
     return Spectrum(spec.wavelength, cr, spec.name, spec.source, spec.metadata), env
 
 
-def preprocess(spec: Spectrum) -> tuple[Spectrum, Spectrum, Spectrum, np.ndarray]:
-    """Full chain -> (resampled+smoothed, global-hull CR, local CR, global continuum)."""
-    rs = resample(spec)
-    rs = Spectrum(rs.wavelength, savgol_smooth(rs.reflectance), spec.name, spec.source, spec.metadata)
+def preprocess(spec: Spectrum) -> tuple[Spectrum, Spectrum, Spectrum, np.ndarray, np.ndarray, float]:
+    """Full chain -> (resampled+smoothed, global-hull CR, local CR, global continuum,
+    local envelope, raw-noise sigma)."""
+    rs_raw = resample(spec)
+    sigma = estimate_noise_sigma(rs_raw.reflectance)
+    rs = Spectrum(rs_raw.wavelength, savgol_smooth(rs_raw.reflectance), spec.name, spec.source, spec.metadata)
     cr, continuum = continuum_remove(rs)
-    cr_local, _ = local_continuum_remove(rs)
-    return rs, cr, cr_local, continuum
+    cr_local, env = local_continuum_remove(rs)
+    return rs, cr, cr_local, continuum, env, sigma

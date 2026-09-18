@@ -43,8 +43,9 @@ def entry_by_id(entry_id: str) -> dict:
 def synthesize(entry: dict, rng: np.random.Generator, tilt: float = 0.05, noise_sigma: float = 0.004) -> Spectrum:
     """Rebuild an idealized measured spectrum: continuum + Gaussians + tilt + noise.
 
-    tilt multiplies the continuum by (1 + tilt * (wl-350)/2150) to emulate
-    illumination/instrument drift; noise emulates ASD-class SNR.
+    tilt multiplies the continuum by (1 + tilt * (wl-350)/1800) — i.e. the full
+    tilt amplitude is reached near 2150 nm — to emulate illumination/instrument
+    drift; noise emulates ASD-class SNR.
     """
     cont_pts = np.asarray(entry["continuum"], dtype=float)
     wl = np.arange(350.0, 2500.5, 1.0)
@@ -72,17 +73,15 @@ def _curve_cr(entry: dict) -> tuple[np.ndarray, np.ndarray]:
 
 
 @lru_cache(maxsize=64)
-def _cr_signature(entry_id: str) -> tuple:
-    """The entry's own local-CR features, extracted with the same detector as the unknown."""
+def _entry_pack(entry_id: str) -> tuple:
+    """Everything matching needs about one entry, computed once: CR curves + signature."""
     entry = entry_by_id(entry_id)
     cr_glob, cr_local, wl = _curve_cr(entry)
     feats = tuple(
         (f["center_nm"], f["depth"], f["fwhm_nm"], f["atmospheric"]) for f in extract_features(wl, cr_local)
     )
-    labels = tuple(
-        _label_for(entry, c) for c, _, _, _ in feats
-    )
-    return tuple(wl), tuple(cr_glob), feats, labels
+    labels = tuple(_label_for(entry, c) for c, _, _, _ in feats)
+    return tuple(wl), tuple(cr_glob), tuple(cr_local), feats, labels
 
 
 def _label_for(entry: dict, center_nm: float) -> str:
@@ -140,7 +139,7 @@ def _coverage(unknown: list[dict], sig_feats: tuple, sig_labels: tuple) -> tuple
                 s = 0.25
             if s > best:
                 best, best_u, best_i = s, uf, i
-        if best >= 0.55 and best_i >= 0:
+        if best >= 0.25 and best_i >= 0:
             used.add(best_i)
         got_w += best * weight
         evidence.append(
@@ -178,7 +177,7 @@ def _unexplained_fraction(unknown: list[dict], sig_feats: tuple) -> float:
 
 def _shape_similarity(entry: dict, cr_wl: np.ndarray, cr: np.ndarray) -> float:
     """Pearson correlation between the unknown's global-hull CR curve and the entry's."""
-    _, cr_glob_entry, _ = _curve_cr(entry)
+    cr_glob_entry = _entry_pack(entry["id"])[1]
     lw = np.arange(350.0, 2500.5, 1.0)
     lo = max(400.0, max(cr_wl[0], lw[0]))
     hi = min(2450.0, min(cr_wl[-1], lw[-1]))
@@ -198,7 +197,7 @@ def _shape_similarity(entry: dict, cr_wl: np.ndarray, cr: np.ndarray) -> float:
 def match(unknown_features: list[dict], cr_wl: np.ndarray, cr: np.ndarray, top_k: int = 3) -> list[dict]:
     results = []
     for entry in load_library()["entries"]:
-        _, _, sig_feats, sig_labels = _cr_signature(entry["id"])
+        _, _, _, sig_feats, sig_labels = _entry_pack(entry["id"])
         cov, evidence = _coverage(unknown_features, sig_feats, sig_labels)
         shape = _shape_similarity(entry, cr_wl, cr)
         extras = _unexplained_fraction(unknown_features, sig_feats)
