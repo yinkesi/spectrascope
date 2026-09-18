@@ -69,6 +69,10 @@ python -m pytest tests/ -q   # 33 项测试：解析/连续统/prominence 解析
   "观测波段 ← 库诊断波段"。
 - **判读报告**：确定性模板或智能体 JSON（headline/推理链/波段点评/注意事项/后续建议）。
 - **参考库浏览**：17 类端元的一键诊断波段速查。
+- **影像模式（⑦）**：模拟 Sentinel-2 12 波段场景的 FCLS 全约束解混——分类图、地面真值
+  对照、RMSE、NDVI/NDWI/铁染指数、7 类端元丰度图，点击任意像元查看其亚像元分解。
+  多光谱像元**不做**吸收特征诊断（诚实边界：12 波段不支持，需高光谱），像元级结论为
+  丰度分解；高岭石↔绿泥石在 S2 宽波段下相关 0.9996 的不可分性作为已知极限写进界面。
 
 ## 参考库与科学口径
 
@@ -101,6 +105,7 @@ app/
     features.py     # 峰值显著性特征提取（单调栈 O(n)）
     library.py      # 参考库、端元签名、一对一特征拟合匹配
     pipeline.py     # 编排 + 确定性模板报告
+    imaging.py      # 影像模式：S2 波段重采样、场景合成、FISTA-FCLS 全约束解混
     agent.py        # LLM 判读/对话（OpenAI 兼容，失败自动回退确定性报告）
   data/spectral_library.json
   main.py           # FastAPI（/api/analyze /api/chat /api/library /api/demo-samples /api/health）
@@ -110,7 +115,7 @@ tests/              # 33 项 pytest
 
 ## Roadmap（黑客松现场可扩展方向）
 
-- 真实 USGS Speclib / ECOSTRESS 子集接入（曲线级端元 + 元数据过滤）
-- Sentinel-2/ENMAP 图像像元级批量判读与矿物丰度制图（SMA 全约束解混）
+- ~~Sentinel-2 场景像元级解混与丰度制图~~ ✅ 已实现（影像模式：FCLS + 指数图 + 像元点击解译）
+- 真实 USGS Speclib / ECOSTRESS 子集接入（曲线级端元 + 元数据过滤）；真实 S2 GeoTIFF 接入
 - 判读报告一键导出野外记录簿格式（GeoJSON/SHP 采样点回填）
 - 多次测量不确定度传递与迁移学习微调（LoRA 领域自适应）

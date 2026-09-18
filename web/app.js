@@ -18,6 +18,7 @@ async function boot() {
   bindInput();
   bindChat();
   bindSettings();
+  bindScene();
   const results = await Promise.allSettled([refreshAgentStatus(), loadDemoList(), loadLibrary()]);
   for (const r of results) {
     if (r.status === "rejected") {
@@ -432,6 +433,164 @@ function toast(text) {
   el.classList.remove("hidden");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.add("hidden"), 3400);
+}
+
+/* ---------------- scene mode ---------------- */
+
+const sceneState = { data: null, view: "class", x: null, y: null };
+
+function bindScene() {
+  $("scene-load").addEventListener("click", loadScene);
+  $("scene-canvas").addEventListener("click", (e) => {
+    if (!sceneState.data) return;
+    const rect = e.target.getBoundingClientRect();
+    const gx = sceneState.data.grid;
+    const px = Math.min(gx - 1, Math.max(0, Math.floor(((e.clientX - rect.left) / rect.width) * gx)));
+    const py = Math.min(gx - 1, Math.max(0, Math.floor(((e.clientY - rect.top) / rect.height) * gx)));
+    pickPixel(px, py);
+  });
+}
+
+async function loadScene() {
+  const btn = $("scene-load");
+  btn.disabled = true;
+  $("scene-loading").classList.remove("hidden");
+  try {
+    sceneState.data = await api("/api/scene");
+    $("scene-body").classList.remove("hidden");
+    $("scene-view-chips").classList.remove("hidden");
+    btn.classList.add("hidden");
+    $("scene-note").textContent = sceneState.data.note;
+    buildSceneChips();
+    buildSceneLegend();
+    drawScene();
+  } catch (err) {
+    toast(`场景加载失败：${err.message}`);
+  } finally {
+    btn.disabled = false;
+    $("scene-loading").classList.add("hidden");
+  }
+}
+
+function buildSceneChips() {
+  const wrap = $("scene-view-chips");
+  wrap.innerHTML = "";
+  const d = sceneState.data;
+  const views = [
+    { id: "class", label: "分类图" },
+    { id: "truth", label: "地面真值" },
+    { id: "rmse", label: "RMSE" },
+    { id: "ndvi", label: "NDVI" },
+    { id: "ndwi", label: "NDWI" },
+    { id: "iron_oxide", label: "铁染" },
+    ...d.endmembers.map((em, i) => ({ id: "ab:" + i, label: em.name_cn, color: em.color })),
+  ];
+  for (const v of views) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "view-chip" + (sceneState.view === v.id ? " active" : "");
+    b.innerHTML = (v.color ? `<span class="dot" style="background:${v.color}"></span>` : "") + esc(v.label);
+    b.addEventListener("click", () => {
+      sceneState.view = v.id;
+      [...wrap.children].forEach((c) => c.classList.remove("active"));
+      b.classList.add("active");
+      drawScene();
+    });
+    wrap.appendChild(b);
+  }
+}
+
+function buildSceneLegend() {
+  const wrap = $("scene-legend");
+  wrap.innerHTML = sceneState.data.endmembers
+    .map((em) => `<span class="lg-item"><span class="sw2" style="background:${em.color}"></span>${esc(em.name_cn)}</span>`)
+    .join("");
+}
+
+function sceneColorAt(i) {
+  // returns [r,g,b] for pixel index i under the current view
+  const d = sceneState.data;
+  const v = sceneState.view;
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const hex2rgb = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+  const ramp = (t, c0, c1) => {
+    const A = hex2rgb(c0), B = hex2rgb(c1);
+    return [lerp(A[0], B[0], t), lerp(A[1], B[1], t), lerp(A[2], B[2], t)];
+  };
+  if (v === "class" || v === "truth") {
+    const map = v === "class" ? d.class_map : d.truth_class_map;
+    return hex2rgb(d.endmembers[map[i]].color);
+  }
+  const norm = (val, lo, hi) => Math.max(0, Math.min(1, (val - lo) / (hi - lo)));
+  if (v === "rmse") return ramp(norm(d.rmse[i], 0, 12), "#fffdf6", "#c2442a");
+  if (v === "ndvi") return ramp(norm(d.indices.ndvi[i], -0.1, 0.8), "#7a6548", "#2e7d43");
+  if (v === "ndwi") return ramp(norm(d.indices.ndwi[i], -0.4, 0.8), "#b08968", "#2f6f8f");
+  if (v === "iron_oxide") return ramp(norm(d.indices.iron_oxide[i], -0.5, 1.5), "#fffdf6", "#a03b23");
+  if (v.startsWith("ab:")) {
+    const k = +v.slice(3);
+    return ramp(d.abundance[d.endmembers[k].id][i] / 100, "#fffdf6", d.endmembers[k].color);
+  }
+  return [240, 238, 222];
+}
+
+function drawScene() {
+  const d = sceneState.data;
+  if (!d) return;
+  const g = d.grid;
+  const off = document.createElement("canvas");
+  off.width = g;
+  off.height = g;
+  const ctx = off.getContext("2d");
+  const img = ctx.createImageData(g, g);
+  for (let i = 0; i < g * g; i++) {
+    const [r, gg, b] = sceneColorAt(i);
+    img.data[i * 4] = r;
+    img.data[i * 4 + 1] = gg;
+    img.data[i * 4 + 2] = b;
+    img.data[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  const canvas = $("scene-canvas");
+  const c2 = canvas.getContext("2d");
+  c2.imageSmoothingEnabled = false;
+  c2.drawImage(off, 0, 0, canvas.width, canvas.height);
+  if (sceneState.x != null) {
+    const s = canvas.width / g;
+    c2.strokeStyle = "#c2442a";
+    c2.lineWidth = 2;
+    c2.strokeRect(sceneState.x * s + 1, sceneState.y * s + 1, s - 2, s - 2);
+  }
+}
+
+async function pickPixel(px, py) {
+  sceneState.x = px;
+  sceneState.y = py;
+  drawScene();
+  const wrap = $("scene-pixel");
+  wrap.innerHTML = '<div class="placeholder">解混中…</div>';
+  try {
+    const p = await api(`/api/scene/pixel?x=${px}&y=${py}`);
+    const match = p.top_id === p.truth_id;
+    const bars = p.abundance
+      .map(
+        (a) => `<div class="px-bar-row">
+          <span class="px-bar-label"><span class="sw2" style="background:${a.color}"></span>${esc(a.name_cn)}</span>
+          <span class="px-bar"><i style="width:${(a.frac * 100).toFixed(1)}%;background:${a.color}"></i></span>
+          <span class="px-frac">${(a.frac * 100).toFixed(1)}%</span>
+        </div>`
+      )
+      .join("");
+    wrap.innerHTML = `
+      <div class="px-head">
+        <span class="px-title">像元 (${p.x}, ${p.y}) · ${esc(p.top_name_cn)}</span>
+        <span class="px-truth ${match ? "ok" : "miss"}">真值 ${esc(p.truth_name_cn)}${match ? " ✓" : " ✗"}</span>
+      </div>
+      <div class="px-stats">RMSE ${p.rmse.toFixed(4)} · NDVI ${p.ndvi.toFixed(2)} · NDWI ${p.ndwi.toFixed(2)}</div>
+      ${bars}
+      <div class="px-note">${esc(p.method_note)}</div>`;
+  } catch (err) {
+    wrap.innerHTML = `<div class="placeholder">解混失败：${esc(err.message)}</div>`;
+  }
 }
 
 boot();

@@ -47,6 +47,22 @@ def get_library() -> dict:
     return {"entries": pipeline.library_summary()}
 
 
+@app.get("/api/scene")
+def get_scene() -> dict:
+    """Sentinel-2 风格模拟场景的 FCLS 解混产品（类图/丰度/RMSE/指数，含地面真值）。"""
+    from .core import imaging
+
+    return imaging.scene_products()
+
+
+@app.get("/api/scene/pixel")
+def get_scene_pixel(x: int, y: int) -> dict:
+    """单像元 FCLS 分解 + 指数 + 地面真值（多光谱像元不做吸收特征诊断）。"""
+    from .core import imaging
+
+    return imaging.pixel_spectrum(x, y)
+
+
 @app.post("/api/analyze")
 async def analyze(
     file: UploadFile | None = File(default=None),

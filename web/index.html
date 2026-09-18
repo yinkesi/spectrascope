@@ -88,6 +88,28 @@
   </div>
 </section>
 
+<!-- ============ 影像模式 ============ -->
+<section class="card scene-card">
+  <div class="chart-head">
+    <h2 class="card-title">⑦ 影像模式 · Sentinel-2 场景解混（实验）</h2>
+    <div class="scene-head-right">
+      <div id="scene-view-chips" class="scene-chips hidden"></div>
+      <button id="scene-load" class="btn primary" type="button">加载模拟场景</button>
+    </div>
+  </div>
+  <div id="scene-body" class="scene-body hidden">
+    <div class="scene-map-wrap">
+      <canvas id="scene-canvas" width="384" height="384"></canvas>
+      <div id="scene-legend" class="scene-legend"></div>
+    </div>
+    <div class="scene-side">
+      <div id="scene-note" class="scene-note-text"></div>
+      <div id="scene-pixel" class="scene-pixel"><div class="placeholder">点击地图上任意像元，查看它的 FCLS 亚像元分解。</div></div>
+    </div>
+  </div>
+  <div id="scene-loading" class="chart-loading hidden"><span class="spin"></span>FCLS 解混 9216 个像元中…</div>
+</section>
+
 <footer class="foot">
   SpectraScope · 连续统去除 + 峰值显著性特征提取 + 一对一特征拟合匹配 · 智能体仅做受约束的鉴别诊断叙事，不产生数值 ·
   诊断波段据 Clark et al. (USGS) / Hunt (1977) 编纂

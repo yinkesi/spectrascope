@@ -58,14 +58,21 @@ def synthesize(entry: dict, rng: np.random.Generator, tilt: float = 0.05, noise_
     return Spectrum(wl, np.clip(rf, 0.001, 1.2), name=entry["name_cn"], source="library", metadata={"entry": entry["id"]})
 
 
+def idealized_rf(entry: dict, wl: np.ndarray | None = None) -> np.ndarray:
+    """Idealized noiseless reflectance curve of an entry on a 1 nm grid (or given grid)."""
+    if wl is None:
+        wl = np.arange(350.0, 2500.5, 1.0)
+    cont_pts = np.asarray(entry["continuum"], dtype=float)
+    rf = np.interp(wl, cont_pts[:, 0], cont_pts[:, 1]).copy()
+    for f in entry["features"]:
+        rf = rf * (1.0 - f["d"] * np.exp(-4.0 * np.log(2.0) * ((wl - f["c"]) / f["w"]) ** 2))
+    return rf
+
+
 def _curve_cr(entry: dict) -> tuple[np.ndarray, np.ndarray]:
     """Idealized entry curve -> (global-hull CR, local-envelope CR)."""
     wl = np.arange(350.0, 2500.5, 1.0)
-    cont_pts = np.asarray(entry["continuum"], dtype=float)
-    continuum = np.interp(wl, cont_pts[:, 0], cont_pts[:, 1])
-    rf = continuum.copy()
-    for f in entry["features"]:
-        rf = rf * (1.0 - f["d"] * np.exp(-4.0 * np.log(2.0) * ((wl - f["c"]) / f["w"]) ** 2))
+    rf = idealized_rf(entry, wl)
     rs = Spectrum(wl, rf)
     cr, _ = continuum_remove(rs)
     cr_local, _ = local_continuum_remove(rs)

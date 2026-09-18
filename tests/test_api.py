@@ -119,6 +119,25 @@ def test_unknown_api_path_is_404_json():
     assert r.json()["detail"]
 
 
+def test_scene_endpoint():
+    r = client.get("/api/scene")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["grid"] == 96
+    assert len(body["class_map"]) == 96 * 96
+    assert len(body["endmembers"]) == 7
+    assert body["agreement"] >= 0.90
+
+
+def test_scene_pixel_endpoint():
+    r = client.get("/api/scene/pixel", params={"x": 30, "y": 63})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["top_id"] == "water"
+    assert body["truth_id"] == "water"
+    assert abs(sum(a["frac"] for a in body["abundance"]) - 1.0) < 1e-3
+
+
 def test_index_served():
     r = client.get("/")
     assert r.status_code == 200
