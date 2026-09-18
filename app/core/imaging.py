@@ -38,6 +38,8 @@ S2_BANDS = [
 # Endmembers present in the demo scene. Deliberately NO urban class: at S2's
 # broad bands chlorite and concrete are 0.9999 correlated and would trade
 # abundance — a real multispectral resolution limit we document instead of hide.
+# Gypsum is planted as a HIDDEN vein (anomaly) that the working set cannot
+# model — the discovery loop must find it from residuals alone.
 SCENE_ENTRIES = [
     "iron_soil",        # background
     "kaolinite",        # alteration core
@@ -47,6 +49,13 @@ SCENE_ENTRIES = [
     "dry_grass",
     "water",
 ]
+# Goethite is planted as a HIDDEN vein (supergene oxidation) that the working
+# set cannot model — the discovery loop must find it from residuals alone.
+# (Gypsum was tried first and is genuinely invisible to S2: its diagnostic
+# 1450/1750/1950 nm bands all fall between MSI passes — itself a nice lesson.)
+ANOMALY_ENTRY = "goethite"
+ANOMALY_FRACTION = 0.55       # abundance inside the vein
+PIXEL_SIZE_M = 20.0           # S2 20m band pixel size, for route lengths
 
 CLASS_COLORS = {
     "iron_soil": "#b08968",
@@ -176,17 +185,37 @@ def build_scene() -> dict:
     paint("kaolinite", _mask(0.70, 0.70, 0.075, 0.065, wob) * 0.9)               # alteration core
     paint("hematite", _mask(0.50, 0.84, 0.09, 0.07, wob) * 0.9)                  # gossan
 
-    abund = abund.T  # (K, N)
-    truth = abund.argmax(axis=0)
+    # ---- hidden gypsum vein (the discovery loop's secret) ----
+    # a diagonal vein crossing the alteration field; NOT in the working set
+    d_line = np.abs((xx / GRID - 0.42) * 0.55 - (yy / GRID - 0.52) * 0.83) / np.sqrt(0.55**2 + 0.83**2)
+    away_from_lake = np.clip((_ell(0.30, 0.66, 0.26, 0.20) - 1.0) * 2.0, 0, 1)  # 0 at the lake, 1 outside
+    vein = np.clip(1.0 - d_line / 0.025, 0, 1) * away_from_lake
+    a = (np.clip(vein, 0, 1) * ANOMALY_FRACTION).ravel()  # (N,) gypsum abundance
 
-    _wl, A = s2_response()  # (12, K)
+    abund_full = np.column_stack([abund * (1.0 - a)[:, None], a])  # (N, K+1)
+    truth_full = abund_full.argmax(axis=1)  # includes hidden class index K
+
+    _wl, A_visible = s2_response()  # (12, K)
+    wl_grid = np.arange(350.0, 2500.5, 1.0)
+    resp = np.asarray([np.exp(-4.0 * np.log(2.0) * ((wl_grid - c) / f) ** 2) for _n, c, f in S2_BANDS])
+    resp /= resp.sum(axis=1, keepdims=True)
+    A_gyp = (resp @ idealized_rf(entry_by_id(ANOMALY_ENTRY), wl_grid)).reshape(-1, 1)
+    A_full = np.hstack([A_visible, A_gyp])  # (12, K+1)
+
     noise = rng.normal(0.0, 0.004, (len(S2_BANDS), GRID * GRID))
     illum = 1.0 + 0.06 * (xx / GRID).ravel() - 0.03  # gentle across-track illumination gradient
-    cube = A @ abund
+    cube = (A_full @ abund_full.T)  # (12, N)
     cube = cube * illum + noise
     cube = np.clip(cube, 0.001, 1.2)
 
-    return {"abund": abund, "cube": cube, "truth": truth, "A": A}
+    return {
+        "abund_full": abund_full.T,  # (K+1, N)
+        "cube": cube,
+        "truth_working": truth_full,  # includes hidden class index K
+        "n_hidden": len(SCENE_ENTRIES),
+        "A": A_visible,
+        "A_full": A_full,
+    }
 
 
 def _onehot(i: int, k: int) -> np.ndarray:
@@ -211,9 +240,14 @@ def _indices(cube: np.ndarray) -> dict[str, np.ndarray]:
 
 
 def scene_products() -> dict:
-    """Run FCLS over the scene and assemble everything the UI needs."""
+    """Run FCLS (working set, gypsum NOT included) and assemble everything the UI needs."""
     scene = build_scene()
-    abund_true, cube = scene["abund"], scene["cube"]
+    cube = scene["cube"]
+    truth_public = np.where(
+        scene["truth_working"] == scene["n_hidden"],
+        np.argmax(scene["abund_full"][: len(SCENE_ENTRIES)], axis=0),
+        scene["truth_working"],
+    )
     A = scene["A"]
     n = GRID * GRID
 
@@ -222,7 +256,7 @@ def scene_products() -> dict:
     rmse = np.sqrt(np.mean((recon - cube) ** 2, axis=0))  # (N,)
 
     cls_hat = abund_hat.argmax(axis=0)
-    agreement = float((cls_hat == scene["truth"]).mean())
+    agreement = float((cls_hat == truth_public).mean())
 
     endmembers = [
         {
@@ -243,7 +277,7 @@ def scene_products() -> dict:
         "abundance": {eid: q(abund_hat[i], 100) for i, eid in enumerate(SCENE_ENTRIES)},
         "rmse": q(rmse, 1000),
         "indices": {k2: q(v) for k2, v in indices.items()},
-        "truth_class_map": [int(v) for v in scene["truth"]],
+        "truth_class_map": [int(v) for v in truth_public],
         "truth_available": True,
         "agreement": round(agreement, 4),
         "note": "模拟 Sentinel-2 场景（12 波段，按 MSI 光谱响应函数重采样），FCLS 全约束解混；丰度为 0-100 整数。"
@@ -265,6 +299,7 @@ def pixel_spectrum(x: int, y: int) -> dict:
     rmse = float(np.sqrt(np.mean((recon - cube[:, p]) ** 2)))
     top = int(abund_hat.argmax())
     indices = _indices(cube[:, [p]])
+    truth_idx = int(scene["truth_working"][p])
     return {
         "x": x,
         "y": y,
@@ -285,8 +320,8 @@ def pixel_spectrum(x: int, y: int) -> dict:
         "rmse": round(rmse, 5),
         "ndvi": round(float(indices["ndvi"][0]), 4),
         "ndwi": round(float(indices["ndwi"][0]), 4),
-        "truth_id": SCENE_ENTRIES[int(scene["truth"][p])],
-        "truth_name_cn": entry_by_id(SCENE_ENTRIES[int(scene["truth"][p])])["name_cn"],
+        "truth_id": (SCENE_ENTRIES[truth_idx] if truth_idx < len(SCENE_ENTRIES) else ANOMALY_ENTRY),
+        "truth_name_cn": entry_by_id(SCENE_ENTRIES[truth_idx] if truth_idx < len(SCENE_ENTRIES) else ANOMALY_ENTRY)["name_cn"],
         "method_note": "多光谱像元（12 波段）不支持吸收特征诊断，像元级结论为 FCLS 亚像元分解；"
                        "若需吸收特征判读，请使用单光谱模式（VNIR-SWIR 全分辨率）。",
     }
@@ -294,3 +329,180 @@ def pixel_spectrum(x: int, y: int) -> dict:
 
 def library_summary_count() -> int:
     return len(load_library()["entries"])
+
+
+# ---------- discovery: residual hotspots + hypothesis testing ----------
+
+def _fcls_for(A: np.ndarray, cube: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    X = fcls(A, cube)
+    recon = A @ X
+    rmse = np.sqrt(np.mean((recon - cube) ** 2, axis=0))
+    return X, rmse
+
+
+def _connect_components(mask: np.ndarray, min_pixels: int = 6) -> list[list[int]]:
+    """8-connected components of a boolean grid; returns lists of flat pixel ids."""
+    g = GRID
+    seen = np.zeros_like(mask, dtype=bool)
+    comps = []
+    for start in np.argwhere(mask):
+        y0, x0 = int(start[0]), int(start[1])
+        if seen[y0, x0]:
+            continue
+        stack = [(x0, y0)]
+        seen[y0, x0] = True
+        comp = []
+        while stack:
+            x, y = stack.pop()
+            comp.append(y * g + x)
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    nx_, ny_ = x + dx, y + dy
+                    if 0 <= nx_ < g and 0 <= ny_ < g and mask[ny_, nx_] and not seen[ny_, nx_]:
+                        seen[ny_, nx_] = True
+                        stack.append((nx_, ny_))
+        if len(comp) >= min_pixels:
+            comps.append(comp)
+    comps.sort(key=len, reverse=True)
+    return comps
+
+
+@lru_cache(maxsize=1)
+def hotspots(top: int = 3) -> dict:
+    """RMSE hotspots = where the working endmember set cannot explain the data."""
+    scene = build_scene()
+    cube = scene["cube"]
+    _X, rmse = _fcls_for(scene["A"], cube)
+    thr = float(np.percentile(rmse, 97.0))
+    mask = (rmse > max(thr, rmse.mean() + 1.5 * rmse.std())).reshape(GRID, GRID)
+    comps = _connect_components(mask)[:top]
+    regions = []
+    for comp in comps:
+        px = np.asarray(comp)
+        resid = cube[:, px] - (scene["A"] @ fcls(scene["A"], cube[:, px]))
+        mean_resid = resid.mean(axis=1)
+        xs = px % GRID
+        ys = px // GRID
+        regions.append({
+            "pixels": int(px.size),
+            "cx": int(xs.mean()),
+            "cy": int(ys.mean()),
+            "bbox": [int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())],
+            "mean_rmse": round(float(rmse[px].mean()), 5),
+            "background_rmse": round(float(np.percentile(rmse, 50)), 5),
+            "mean_residual": [round(float(v), 4) for v in mean_resid],
+        })
+    regions.sort(key=lambda r: -r["mean_rmse"])
+    return {"regions": regions, "band_names": BAND_NAMES, "note": "RMSE 显著高于背景的区域 = 工作端元集无法解释的信号。"}
+
+
+def test_hypothesis(entry_id: str, region_index: int = 0) -> dict:
+    """Add a candidate endmember and refit the hotspot region. Physics decides."""
+    entry_id = entry_id.strip().lower()
+    try:
+        entry_by_id(entry_id)
+    except KeyError:
+        raise KeyError(entry_id)
+    scene = build_scene()
+    cube = scene["cube"]
+    hs = hotspots()
+    if not hs["regions"]:
+        return {"entry_id": entry_id, "verdict": "no_hotspots", "improvement": 0.0}
+    reg = hs["regions"][min(max(region_index, 0), len(hs["regions"]) - 1)]
+    x0, y0, x1, y1 = reg["bbox"]
+    pad = 2
+    x0, y0 = max(0, x0 - pad), max(0, y0 - pad)
+    x1, y1 = min(GRID - 1, x1 + pad), min(GRID - 1, y1 + pad)
+    sel = np.asarray([y * GRID + x for y in range(y0, y1 + 1) for x in range(x0, x1 + 1)])
+    sub = cube[:, sel]
+
+    _X0, rmse0 = _fcls_for(scene["A"], sub)
+    A_aug = np.hstack([scene["A"], _endmember_col(entry_id)])
+    X1, rmse1 = _fcls_for(A_aug, sub)
+
+    # score on the pixels that flagged the anomaly: does the hypothesis
+    # explain THEIR residual? (bbox-average would dilute with background)
+    anomalous = rmse0 > max(1.35 * float(np.median(rmse0)), 1e-6)
+    n_anom = int(anomalous.sum())
+    if n_anom < 4:
+        n_anom = min(len(rmse0), max(4, n_anom))
+        anomalous = np.argsort(rmse0)[-n_anom:]
+    before = float(rmse0[anomalous].mean())
+    after = float(rmse1[anomalous].mean())
+    improvement = (before - after) / max(before, 1e-9)
+    new_frac = float(X1[-1][anomalous].max())
+    verdict = "accepted" if improvement >= 0.35 and new_frac >= 0.2 else ("weak" if improvement >= 0.15 else "rejected")
+    return {
+        "entry_id": entry_id,
+        "name_cn": entry_by_id(entry_id)["name_cn"],
+        "region_bbox": [x0, y0, x1, y1],
+        "region_pixels": int(sel.size),
+        "anomalous_pixels": n_anom,
+        "rmse_before": round(before, 5),
+        "rmse_after": round(after, 5),
+        "improvement": round(improvement, 4),
+        "new_frac_max": round(new_frac, 4),
+        "verdict": verdict,
+    }
+
+
+def _endmember_col(entry_id: str) -> np.ndarray:
+    wl = np.arange(350.0, 2500.5, 1.0)
+    resp = np.asarray([np.exp(-4.0 * np.log(2.0) * ((wl - c) / f) ** 2) for _n, c, f in S2_BANDS])
+    resp /= resp.sum(axis=1, keepdims=True)
+    return (resp @ idealized_rf(entry_by_id(entry_id), wl)).reshape(-1, 1)
+
+
+def candidate_ids() -> list[str]:
+    """Hypothesis pool: library entries not already in the working set."""
+    working = set(SCENE_ENTRIES)
+    hidden = {ANOMALY_ENTRY}
+    others = [e["id"] for e in load_library()["entries"] if e["id"] not in working and e["id"] not in hidden]
+    return others + [ANOMALY_ENTRY]
+
+
+# ---------- active sampling: entropy field + route ----------
+
+def plan_route(k_stops: int = 6, min_sep: int = 9) -> dict:
+    """Greedy max-entropy sampling sites, nearest-neighbour ordered, metric length."""
+    scene = build_scene()
+    X, _rmse = _fcls_for(scene["A"], scene["cube"])
+    P = np.clip(X, 1e-9, None)
+    H = -(P * np.log(P)).sum(axis=0) / np.log(P.shape[0])  # normalized entropy (N,)
+
+    picked: list[int] = []
+    for i in np.argsort(-H):
+        x, y = i % GRID, i // GRID
+        if all(max(abs(x - p % GRID), abs(y - p // GRID)) >= min_sep for p in picked):
+            picked.append(int(i))
+        if len(picked) >= k_stops:
+            break
+
+    # nearest-neighbour ordering starting from the highest-entropy site
+    route = [picked[0]]
+    remaining = picked[1:]
+    while remaining:
+        cur = route[-1]
+        remaining.sort(key=lambda j: abs(j % GRID - cur % GRID) + abs(j // GRID - cur // GRID))
+        route.append(remaining.pop(0))
+
+    length_px = sum(
+        np.hypot(route[i + 1] % GRID - route[i] % GRID, route[i + 1] // GRID - route[i] // GRID)
+        for i in range(len(route) - 1)
+    )
+    stops = [
+        {
+            "order": n + 1,
+            "x": int(p % GRID),
+            "y": int(p // GRID),
+            "entropy": round(float(H[p]), 4),
+            "est_frac": {eid: round(float(X[i, p]), 3) for i, eid in enumerate(SCENE_ENTRIES) if X[i, p] >= 0.05},
+        }
+        for n, p in enumerate(route)
+    ]
+    return {
+        "stops": stops,
+        "length_m": int(round(length_px * PIXEL_SIZE_M)),
+        "pixel_size_m": PIXEL_SIZE_M,
+        "note": "按丰度熵贪心选点（混合像元信息量最大），间隔≥%d 像元，最近邻排序；像元 20m。" % min_sep,
+    }

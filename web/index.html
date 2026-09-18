@@ -95,6 +95,11 @@
     <div class="scene-head-right">
       <div id="scene-view-chips" class="scene-chips hidden"></div>
       <button id="scene-load" class="btn primary" type="button">加载模拟场景</button>
+      <div id="scene-toolbar" class="scene-toolbar hidden">
+        <button id="scene-discover" class="btn primary" type="button">🔍 残差发现</button>
+        <button id="scene-route" class="btn" type="button">🧭 采样路线</button>
+        <label class="stops-label">站点 <input id="route-stops" type="number" min="2" max="12" value="6"></label>
+      </div>
     </div>
   </div>
   <div id="scene-body" class="scene-body hidden">
@@ -104,6 +109,7 @@
     </div>
     <div class="scene-side">
       <div id="scene-note" class="scene-note-text"></div>
+      <div id="scene-findings" class="scene-findings"></div>
       <div id="scene-pixel" class="scene-pixel"><div class="placeholder">点击地图上任意像元，查看它的 FCLS 亚像元分解。</div></div>
     </div>
   </div>

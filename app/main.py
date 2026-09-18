@@ -63,6 +63,56 @@ def get_scene_pixel(x: int, y: int) -> dict:
     return imaging.pixel_spectrum(x, y)
 
 
+@app.get("/api/scene/hotspots")
+def get_scene_hotspots() -> dict:
+    """RMSE 残差热点：工作端元集无法解释的区域。"""
+    from .core import imaging
+
+    return imaging.hotspots()
+
+
+class DiscoverBody(BaseModel):
+    llm: dict = Field(default_factory=dict)
+    max_tests: int = 5
+
+
+@app.post("/api/scene/discover")
+async def discover_endpoint(body: DiscoverBody) -> dict:
+    """假设驱动的发现循环：LLM 排序候选（无 LLM 则库扫描）→ 物理管线逐一裁决。"""
+    from .core import imaging
+
+    hs = imaging.hotspots()
+    if not hs["regions"]:
+        return {"discovered": None, "tested": []}
+    candidates = imaging.candidate_ids()
+    cfg = LLMConfig.merge(body.llm)
+    plan = await agent_mod.discover(hs["regions"][0], imaging.SCENE_ENTRIES, candidates, cfg)
+    # LLM mode: test its top-K ranked hypotheses; sweep mode: exhaustive until found
+    limit = min(body.max_tests, len(plan["ranked"])) if plan["llm_used"] else len(plan["ranked"])
+    tested = []
+    for cid in plan["ranked"][:limit]:
+        r = imaging.test_hypothesis(cid)
+        tested.append(r)
+        if r["verdict"] == "accepted":
+            break
+    discovered = next((r for r in tested if r["verdict"] == "accepted"), None)
+    return {
+        "discovered": discovered,
+        "tested": tested,
+        "llm_used": plan["llm_used"],
+        "llm_reasoning": plan.get("reasoning", []),
+        "hidden_truth": {"id": imaging.ANOMALY_ENTRY, "name_cn": "针铁矿", "note": "模拟场景预埋的异常体（发现演示用）"},
+    }
+
+
+@app.get("/api/scene/route")
+def get_scene_route(stops: int = 6, min_sep: int = 9) -> dict:
+    """丰度熵驱动的野外采样路线规划。"""
+    from .core import imaging
+
+    return imaging.plan_route(max(2, min(stops, 12)), max(4, min(min_sep, 24)))
+
+
 @app.post("/api/analyze")
 async def analyze(
     file: UploadFile | None = File(default=None),

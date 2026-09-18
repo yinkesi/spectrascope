@@ -437,10 +437,12 @@ function toast(text) {
 
 /* ---------------- scene mode ---------------- */
 
-const sceneState = { data: null, view: "class", x: null, y: null };
+const sceneState = { data: null, view: "class", x: null, y: null, hotspots: null, route: null };
 
 function bindScene() {
   $("scene-load").addEventListener("click", loadScene);
+  $("scene-discover").addEventListener("click", runDiscovery);
+  $("scene-route").addEventListener("click", loadRoute);
   $("scene-canvas").addEventListener("click", (e) => {
     if (!sceneState.data) return;
     const rect = e.target.getBoundingClientRect();
@@ -459,6 +461,7 @@ async function loadScene() {
     sceneState.data = await api("/api/scene");
     $("scene-body").classList.remove("hidden");
     $("scene-view-chips").classList.remove("hidden");
+    $("scene-toolbar").classList.remove("hidden");
     btn.classList.add("hidden");
     $("scene-note").textContent = sceneState.data.note;
     buildSceneChips();
@@ -559,6 +562,116 @@ function drawScene() {
     c2.strokeStyle = "#c2442a";
     c2.lineWidth = 2;
     c2.strokeRect(sceneState.x * s + 1, sceneState.y * s + 1, s - 2, s - 2);
+  }
+  if (sceneState.hotspots) {
+    const s = canvas.width / g;
+    c2.strokeStyle = "rgba(194, 68, 42, .85)";
+    c2.lineWidth = 1.5;
+    c2.setLineDash([4, 3]);
+    for (const r of sceneState.hotspots) {
+      c2.strokeRect(r.bbox[0] * s, r.bbox[1] * s, (r.bbox[2] - r.bbox[0] + 1) * s, (r.bbox[3] - r.bbox[1] + 1) * s);
+    }
+    c2.setLineDash([]);
+  }
+  if (sceneState.route) {
+    const s = canvas.width / g;
+    const pts = sceneState.route.map((p) => [(p.x + 0.5) * s, (p.y + 0.5) * s]);
+    c2.strokeStyle = "#1e2433";
+    c2.lineWidth = 2;
+    c2.beginPath();
+    pts.forEach(([x, y], i) => (i ? c2.lineTo(x, y) : c2.moveTo(x, y)));
+    c2.stroke();
+    c2.font = "bold 11px Consolas";
+    c2.textAlign = "center";
+    pts.forEach(([x, y], i) => {
+      c2.fillStyle = "#c2442a";
+      c2.beginPath();
+      c2.arc(x, y, 8, 0, Math.PI * 2);
+      c2.fill();
+      c2.fillStyle = "#fff8ec";
+      c2.fillText(String(i + 1), x, y + 4);
+    });
+  }
+}
+
+async function runDiscovery() {
+  const btn = $("scene-discover");
+  btn.disabled = true;
+  btn.textContent = "🔍 检验假设中…";
+  $("scene-findings").innerHTML = '<div class="placeholder">热点检测与假设检验运行中（约 5–30 秒，取决于是否配置 LLM）…</div>';
+  try {
+    const hs = await api("/api/scene/hotspots");
+    sceneState.hotspots = hs.regions;
+    drawScene();
+    const res = await api("/api/scene/discover", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ llm: llmOverride(), max_tests: 5 }),
+    });
+    renderFindings(res, hs);
+  } catch (err) {
+    $("scene-findings").innerHTML = `<div class="placeholder">发现流程失败：${esc(err.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "🔍 残差发现";
+  }
+}
+
+function renderFindings(res, hs) {
+  const wrap = $("scene-findings");
+  const verdictLabel = { accepted: "采纳 ✓", weak: "弱证据", rejected: "否决 ✗" };
+  let html = "";
+  const d = res.discovered;
+  if (d) {
+    html += `<div class="disc-banner">
+      <div class="t">发现新端元：${esc(d.name_cn)}（${esc(d.entry_id)}）</div>
+      <div class="s">异常像元 RMSE ${d.rmse_before.toFixed(4)} → ${d.rmse_after.toFixed(4)}（Δ ${(d.improvement * 100).toFixed(0)}%），峰值丰度 ${(d.new_frac_max * 100).toFixed(0)}%。物理管线裁决通过。</div>
+    </div>`;
+  } else if (res.tested.length) {
+    html += `<div class="llm-reason">所有受检假设均未被物理管线采纳——残差可能来自混合效应或噪声。</div>`;
+  }
+  if (res.llm_reasoning && res.llm_reasoning.length) {
+    html += `<div class="llm-reason">智能体排序依据：${res.llm_reasoning.map(esc).join("；")}</div>`;
+  } else if (!res.llm_used) {
+    html += `<div class="llm-reason">未配置 LLM：已对参考库做确定性穷举扫描（发现循环本身不依赖 LLM）。</div>`;
+  }
+  html += res.tested
+    .map(
+      (t) => `<div class="hyp-row">
+        <span class="hyp-verdict ${t.verdict}">${verdictLabel[t.verdict] || t.verdict}</span>
+        <span class="hyp-name">${esc(t.name_cn)}</span>
+        <span class="hyp-nums">RMSE ${t.rmse_before.toFixed(4)}→${t.rmse_after.toFixed(4)} · Δ ${(t.improvement * 100).toFixed(0)}% · 丰度 ${(t.new_frac_max * 100).toFixed(0)}%</span>
+      </div>`
+    )
+    .join("");
+  html += `<div class="px-note">机制：RMSE 残差热点（虚线框）标记工作端元集无法解释的信号 → 候选端元逐一加入重解混 → 仅当异常像元的 RMSE 显著下降且新丰度可观时采纳。LLM 只提出假设，物理裁决。</div>`;
+  wrap.innerHTML = html;
+}
+
+async function loadRoute() {
+  const btn = $("scene-route");
+  btn.disabled = true;
+  const k = Math.max(2, Math.min(12, parseInt($("route-stops").value, 10) || 6));
+  try {
+    const r = await api(`/api/scene/route?stops=${k}&min_sep=9`);
+    sceneState.route = r.stops;
+    drawScene();
+    const rows = r.stops
+      .map(
+        (s) => `<div class="route-stop">
+          <span class="route-no">${s.order}</span>
+          <span>(${s.x}, ${s.y})</span>
+          <span class="route-meta">熵 ${s.entropy.toFixed(2)} · ${Object.entries(s.est_frac).map(([k2, v]) => `${k2 === "iron_soil" ? "土壤" : k2 === "kaolinite" ? "高岭石" : k2 === "chlorite" ? "绿泥石" : k2 === "hematite" ? "赤铁矿" : k2 === "green_vegetation" ? "植被" : k2 === "dry_grass" ? "枯草" : "水体"} ${Math.round(v * 100)}%`).join(" / ")}</span>
+        </div>`
+      )
+      .join("");
+    $("scene-findings").innerHTML =
+      `<div class="llm-reason">${esc(r.note)} 路线总长约 ${(r.length_m / 1000).toFixed(1)} km（像元 ${r.pixel_size_m} m）。</div>` +
+      `<div class="route-list">${rows}</div>`;
+  } catch (err) {
+    toast(`路线规划失败：${err.message}`);
+  } finally {
+    btn.disabled = false;
   }
 }
 

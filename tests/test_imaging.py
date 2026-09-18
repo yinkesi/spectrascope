@@ -63,14 +63,48 @@ def test_scene_all_classes_present_and_recovered():
     prods = scene_products()
     import collections
 
+    # public truth covers exactly the 7 working classes (hidden vein excluded)
     truth = collections.Counter(prods["truth_class_map"])
-    assert len(truth) == len(SCENE_ENTRIES), "every endmember must own some pixels"
+    assert set(truth) == set(range(len(SCENE_ENTRIES))), "every working endmember must own some pixels"
     pred = np.asarray(prods["class_map"])
     truth_arr = np.asarray(prods["truth_class_map"])
     for i, em in enumerate(prods["endmembers"]):
         m = truth_arr == i
         hit = float((pred[m] == i).mean())
-        assert hit >= 0.55, f"{em['id']} argmax-hit {hit:.2f} too low"
+        # 0.50 not higher: the hidden vein deliberately crosses some zones
+        assert hit >= 0.50, f"{em['id']} argmax-hit {hit:.2f} too low"
+
+
+def test_hidden_anomaly_discoverable():
+    """The planted goethite vein must flag as residual hotspot and win its test."""
+    from app.core.imaging import ANOMALY_ENTRY, build_scene, hotspots, test_hypothesis
+
+    scene = build_scene()
+    vein = scene["truth_working"] == scene["n_hidden"]
+    assert vein.sum() >= 25, "vein must exist"
+
+    hs = hotspots()
+    assert hs["regions"], "vein must produce a residual hotspot"
+
+    r_goethite = test_hypothesis(ANOMALY_ENTRY)
+    assert r_goethite["verdict"] == "accepted", r_goethite
+    # decoys (mineral cousins included) must NOT be accepted
+    for decoy in ("hematite", "kaolinite", "alunite"):
+        assert test_hypothesis(decoy)["verdict"] != "accepted"
+
+
+def test_route_planning():
+    from app.core.imaging import plan_route
+
+    r = plan_route(6, 9)
+    assert len(r["stops"]) == 6
+    pts = [(s["x"], s["y"]) for s in r["stops"]]
+    assert len(set(pts)) == 6
+    # min separation (Chebyshev) between all stops
+    for i in range(len(pts)):
+        for j in range(i + 1, len(pts)):
+            assert max(abs(pts[i][0] - pts[j][0]), abs(pts[i][1] - pts[j][1])) >= 9
+    assert r["length_m"] > 500  # a real route, not a degenerate cluster
 
 
 def test_pixel_spectrum_endpoint_shape():

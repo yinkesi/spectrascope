@@ -173,6 +173,53 @@ def _context_block(result_dict: dict | None) -> str:
     )
 
 
+async def discover(hotspot_summary: dict, working_ids: list[str], candidate_ids: list[str], cfg: LLMConfig, timeout: float = 40.0) -> dict:
+    """Residual-driven discovery loop, step 1: the LLM ranks hypotheses.
+
+    The agent sees the hotspot's mean residual spectrum (what the working set
+    cannot explain, per S2 band) and proposes a ranked candidate list from the
+    library. Physics (ΔRMSE on the anomalous pixels) adjudicates later —
+    the LLM never confirms its own hypothesis. Without an endpoint the caller
+    falls back to a deterministic library sweep.
+    """
+    if not cfg.configured:
+        return {"ranked": candidate_ids, "llm_used": False, "reasoning": []}
+    resid = hotspot_summary.get("mean_residual", [])
+    bands = hotspot_summary.get("band_names", [])
+    resid_txt = "\n".join(f"{b}: {v:+.4f}" for b, v in zip(bands, resid))
+    prompt = (
+        "你是遥感地质发现智能体。一个多光谱场景用以下工作端元拟合：\n"
+        f"{', '.join(working_ids)}\n\n"
+        "某 hotspot 区域的平均残差光谱（观测 - 模型重建，正值=观测更高）：\n"
+        f"{resid_txt}\n\n"
+        "参考库候选（均为 id）：\n"
+        f"{', '.join(candidate_ids)}\n\n"
+        "请按可能性从高到低排出最值得检验的至多 5 个候选 id（物理推理：残差在哪些波段偏正/偏负"
+        "对应什么矿物的诊断吸收被错配），输出 JSON："
+        '{"ranked": ["id1", "id2"], "reasoning": ["一句中文理由", ...]}。'
+        "只允许使用给出的候选 id。"
+    )
+    try:
+        async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
+            resp = await client.post(
+                f"{cfg.base_url}/chat/completions",
+                json={
+                    "model": cfg.model or "default",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.2,
+                    "max_tokens": 600,
+                },
+                headers={"Content-Type": "application/json", **({"Authorization": f"Bearer {cfg.api_key}"} if cfg.api_key else {})},
+            )
+            resp.raise_for_status()
+            parsed = _extract_json(resp.json()["choices"][0]["message"]["content"])
+        valid = [c for c in (parsed or {}).get("ranked", []) if c in candidate_ids]
+        ranked = valid + [c for c in candidate_ids if c not in valid]
+        return {"ranked": ranked, "llm_used": True, "reasoning": (parsed or {}).get("reasoning", [])}
+    except Exception:  # noqa: BLE001 — sweep fallback
+        return {"ranked": candidate_ids, "llm_used": False, "reasoning": []}
+
+
 async def chat(question: str, result_dict: dict | None, history: list[dict], cfg: LLMConfig, timeout: float = 45.0) -> dict:
     if not cfg.configured:
         return {
