@@ -45,7 +45,7 @@ geology, vegetation, and land-cover work — deterministic science first, LLM na
 ## 快速开始
 
 ```bash
-# Python 3.12，依赖极轻（numpy + fastapi + httpx，无 scipy/torch）
+# Python 3.12，依赖极轻（numpy + fastapi + uvicorn + httpx + python-multipart，无 scipy/torch）
 pip install -r requirements.txt
 python -m uvicorn app.main:app --port 8765
 # 打开 http://127.0.0.1:8765
@@ -58,7 +58,7 @@ python -m uvicorn app.main:app --port 8765
 - 或走环境变量：`SPECTRASCOPE_LLM_BASE_URL / SPECTRASCOPE_LLM_API_KEY / SPECTRASCOPE_LLM_MODEL`。
 
 ```bash
-python -m pytest tests/ -q   # 22 项测试：解析/连续统/特征/匹配/API 全链路
+python -m pytest tests/ -q   # 33 项测试：解析/连续统/prominence 解析解/特征/匹配/API 全链路
 ```
 
 ## 界面
@@ -80,14 +80,16 @@ Hunt 1977、Kokaly et al. 2017 USGS DS 1035）；曲线为按诊断参数重建�
 稳健。
 
 **已知局限（诚实声明）**：单条光谱判读存在多解性；水/雪在连续统去除后本质同谱（仅剩
-可见光反照率差异）；赤铁矿/针铁矿、方解石/白云石为光谱近孪生，工具以"Top-3 + 置信度
-+ 鉴别诊断叙事"呈现而非武断单一结论——这正是与 CrystaLenz/MixSense 一脉的
-"负责任判读"设计。
+可见光反照率差异）；测试白名单中的光谱近孪生对为——赤铁矿/针铁矿（同为 Fe³+ 氧化物）、
+绿帘石/绿泥石（同为 Fe-Mg-OH）、水/雪（同为冰水吸收）、沥青/混凝土（同为深色不透水面）。
+工具以"Top-3 + 置信度 + 鉴别诊断叙事"呈现而非武断单一结论——这正是与
+CrystaLenz/MixSense 一脉的"负责任判读"设计。
 
 ## 测试精度
 
-17 端元 × 3 组噪声/漂移合成盲测（seed 42）：**top-1 88%**，失误全部落在上述光谱近孪生
-对内且正确答案均在 Top-3；四个内置演示样例全部正确。
+17 端元 × 4 种子 × 3 组噪声/漂移合成盲测（共 204 条）：**top-1 ≈99%**，失误全部为上述
+光谱近孪生对，正确答案 100% 在 Top-3；四个内置演示样例全部正确。独立复现（不同种子
+配置）top-1 97%，结论一致。
 
 ## 结构
 
@@ -101,9 +103,9 @@ app/
     pipeline.py     # 编排 + 确定性模板报告
     agent.py        # LLM 判读/对话（OpenAI 兼容，失败自动回退确定性报告）
   data/spectral_library.json
-  main.py           # FastAPI（/api/analyze /api/chat /api/library /api/health）
+  main.py           # FastAPI（/api/analyze /api/chat /api/library /api/demo-samples /api/health）
 web/                # 无构建、零依赖前端（SVG 图表手绘）
-tests/              # 22 项 pytest
+tests/              # 33 项 pytest
 ```
 
 ## Roadmap（黑客松现场可扩展方向）
