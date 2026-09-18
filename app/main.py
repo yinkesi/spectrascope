@@ -14,13 +14,9 @@ from .core.agent import LLMConfig
 from .core.spectra import demo_samples, spectrum_from_csv_bytes
 
 WEB_DIR = Path(__file__).resolve().parents[1] / "web"
+MAX_UPLOAD_BYTES = 32 * 1024 * 1024
 
 app = FastAPI(title="SpectraScope", version="1.0.0")
-
-
-class AnalyzeBody(BaseModel):
-    demo: str | None = None
-    llm: dict = Field(default_factory=dict)
 
 
 class ChatBody(BaseModel):
@@ -68,7 +64,9 @@ async def analyze(
             raise HTTPException(400, "llm 字段不是合法 JSON")
     try:
         if file is not None:
-            data = await file.read()
+            data = await file.read(MAX_UPLOAD_BYTES + 1)
+            if len(data) > MAX_UPLOAD_BYTES:
+                raise HTTPException(413, "文件超过 32MB 上限")
             spec = spectrum_from_csv_bytes(data, file.filename or "upload.csv")
         elif demo:
             samples = demo_samples()

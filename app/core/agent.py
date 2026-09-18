@@ -54,7 +54,7 @@ class LLMConfig:
     @classmethod
     def merge(cls, override: dict | None) -> "LLMConfig":
         cfg = cls.from_env()
-        if override:
+        if isinstance(override, dict):  # tolerate any JSON the client sends
             if override.get("base_url"):
                 cfg.base_url = str(override["base_url"]).strip().rstrip("/")
             if override.get("api_key"):
@@ -137,7 +137,10 @@ async def interpret(result_dict: dict, cfg: LLMConfig, timeout: float = 45.0) ->
     if cfg.api_key:
         headers["Authorization"] = f"Bearer {cfg.api_key}"
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        # trust_env=False: never route LLM calls through system/env proxies —
+        # on Windows a global proxy would otherwise hijack localhost llama.cpp
+        # endpoints and see the Authorization header.
+        async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
             resp = await client.post(f"{cfg.base_url}/chat/completions", json=payload, headers=headers)
             resp.raise_for_status()
             content = resp.json()["choices"][0]["message"]["content"]
@@ -154,6 +157,22 @@ async def interpret(result_dict: dict, cfg: LLMConfig, timeout: float = 45.0) ->
         return report
 
 
+def _context_block(result_dict: dict | None) -> str:
+    """Build the analysis context defensively — the client may send any JSON."""
+    if not isinstance(result_dict, dict):
+        return ""
+    spectrum = result_dict.get("spectrum") if isinstance(result_dict.get("spectrum"), dict) else {}
+    features = result_dict.get("features") if isinstance(result_dict.get("features"), list) else []
+    candidates = result_dict.get("candidates") if isinstance(result_dict.get("candidates"), list) else []
+    if not features and not candidates:
+        return ""
+    return (
+        f"【当前分析上下文】\n样品：{spectrum.get('name', '未知')}\n"
+        f"特征表：{_features_block(features)}\n"
+        f"候选：{_candidates_block(candidates)[:1800]}\n\n"
+    )
+
+
 async def chat(question: str, result_dict: dict | None, history: list[dict], cfg: LLMConfig, timeout: float = 45.0) -> dict:
     if not cfg.configured:
         return {
@@ -162,21 +181,21 @@ async def chat(question: str, result_dict: dict | None, history: list[dict], cfg
             "mode": "deterministic",
         }
     context = ""
-    if result_dict:
-        context = (
-            f"【当前分析上下文】\n样品：{result_dict['spectrum']['name']}\n"
-            f"特征表：{_features_block(result_dict['features'])}\n"
-            f"候选：{_candidates_block(result_dict['candidates'])[:1800]}\n\n"
-        )
+    context = _context_block(result_dict)
     messages = [{"role": "system", "content": SYSTEM_PROMPT + "\n\n现在是追问环节：直接用中文回答用户关于本次判读的问题，保持数值忠实。"}]
-    for h in history[-6:]:
-        messages.append({"role": h["role"], "content": str(h["content"])[:1500]})
+    # only user/assistant turns survive; anything else the client sends is dropped
+    for h in history[-6:] if isinstance(history, list) else []:
+        if not isinstance(h, dict) or h.get("role") not in ("user", "assistant"):
+            continue
+        content = str(h.get("content", ""))[:1500]
+        if content:
+            messages.append({"role": h["role"], "content": content})
     messages.append({"role": "user", "content": context + question})
     headers = {"Content-Type": "application/json"}
     if cfg.api_key:
         headers["Authorization"] = f"Bearer {cfg.api_key}"
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
             resp = await client.post(
                 f"{cfg.base_url}/chat/completions",
                 json={"model": cfg.model or "default", "messages": messages, "temperature": 0.4, "max_tokens": 900},

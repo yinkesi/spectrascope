@@ -75,6 +75,50 @@ def test_chat_without_llm_falls_back():
     assert r.json()["mode"] == "deterministic"
 
 
+def test_chat_with_unreachable_llm_no_500():
+    """Configured-but-dead endpoint must return a graceful error, never a 500."""
+    r = client.post(
+        "/api/chat",
+        json={
+            "question": "为什么？",
+            "history": [{"role": "banana"}, {"role": "system", "content": "evil"}, {"role": "user"}],
+            "result": {"garbage": True},
+            "llm": {"base_url": "http://127.0.0.1:9/v1", "model": "x"},
+        },
+    )
+    assert r.status_code == 200
+    assert r.json()["mode"] == "error"
+
+
+def test_analyze_llm_override_non_object_is_tolerated():
+    r = client.post("/api/analyze", data={"demo": "marble", "llm": "[1,2]"})
+    assert r.status_code == 200
+    assert r.json()["candidates"][0]["entry_id"] == "calcite"
+
+
+def test_analyze_llm_unreachable_falls_back_to_deterministic():
+    r = client.post(
+        "/api/analyze",
+        data={"demo": "marble", "llm": '{"base_url": "http://127.0.0.1:9/v1", "model": "x"}'},
+    )
+    assert r.status_code == 200
+    report = r.json()["report"]
+    assert report["mode"] == "deterministic"
+    assert report.get("llm_error")
+
+
+def test_upload_too_large_413():
+    big = b"1,1\n" * (9 * 1024 * 1024)  # > 32MB
+    r = client.post("/api/analyze", files={"file": ("big.csv", big, "text/csv")})
+    assert r.status_code == 413
+
+
+def test_unknown_api_path_is_404_json():
+    r = client.get("/api/does-not-exist")
+    assert r.status_code == 404
+    assert r.json()["detail"]
+
+
 def test_index_served():
     r = client.get("/")
     assert r.status_code == 200

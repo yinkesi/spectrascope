@@ -2,19 +2,29 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
+const esc = (s) =>
+  String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const state = {
   result: null,
   history: [],
   busy: false,
+  chatBusy: false,
 };
 
 /* ---------------- bootstrap ---------------- */
 
 async function boot() {
-  await Promise.all([refreshAgentStatus(), loadDemoList(), loadLibrary()]);
+  // bind interactions first so the page stays usable even if listing calls fail
   bindInput();
   bindChat();
   bindSettings();
+  const results = await Promise.allSettled([refreshAgentStatus(), loadDemoList(), loadLibrary()]);
+  for (const r of results) {
+    if (r.status === "rejected") {
+      console.warn("boot:", r.reason);
+      toast("部分初始化失败，请刷新重试");
+    }
+  }
 }
 
 async function api(path, options) {
@@ -34,8 +44,12 @@ async function refreshAgentStatus() {
   const chip = $("agent-chip");
   try {
     const h = await api("/api/health");
-    if (h.llm_configured) {
-      chip.textContent = `智能体 · ${h.llm_model || "默认模型"} @ ${h.llm_base_url}`;
+    // effective config = per-request UI override, else server env
+    const o = llmOverride();
+    const base = (o.base_url || h.llm_base_url || "").trim();
+    const model = (o.model || h.llm_model || "").trim();
+    if (base) {
+      chip.textContent = `智能体 · ${model || "默认模型"} @ ${base}`;
       chip.className = "chip on";
     } else {
       chip.textContent = "确定性模式（未配置 LLM）";
@@ -49,7 +63,8 @@ async function refreshAgentStatus() {
 
 function llmOverride() {
   try {
-    return JSON.parse(localStorage.getItem("spectrascope.llm") || "{}");
+    const parsed = JSON.parse(localStorage.getItem("spectrascope.llm") || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
   } catch (_) {
     return {};
   }
@@ -108,7 +123,10 @@ function bindInput() {
 }
 
 async function uploadFile(file) {
-  if (state.busy) return;
+  if (state.busy) {
+    toast("分析进行中，请稍候");
+    return;
+  }
   const fd = new FormData();
   fd.append("file", file, file.name);
   fd.append("llm", JSON.stringify(llmOverride()));
@@ -116,7 +134,10 @@ async function uploadFile(file) {
 }
 
 async function analyzeDemo(key) {
-  if (state.busy) return;
+  if (state.busy) {
+    toast("分析进行中，请稍候");
+    return;
+  }
   const fd = new FormData();
   fd.append("demo", key);
   fd.append("llm", JSON.stringify(llmOverride()));
@@ -175,11 +196,11 @@ function renderCandidates(cands) {
     div.innerHTML = `
       <div class="cand-rank"><span>${i === 0 ? "最优候选 TOP-1" : `候选 #${i + 1}`}</span>` +
       `${c.confidence != null ? `<span class="conf">置信度 ${(c.confidence * 100).toFixed(0)}%</span>` : ""}</div>
-      <div class="cand-name">${c.name_cn}</div>
-      <div class="cand-meta">${c.name} · ${c.category_cn} · ${c.formula}</div>
+      <div class="cand-name">${esc(c.name_cn)}</div>
+      <div class="cand-meta">${esc(c.name)} · ${esc(c.category_cn)} · ${esc(c.formula)}</div>
       <div class="bar"><i style="width:${(c.score * 100).toFixed(1)}%"></i></div>
       <div class="cand-meta">综合 ${(c.score).toFixed(3)} · 覆盖 ${(c.coverage).toFixed(2)} · 形状 ${(c.shape_similarity).toFixed(2)} · 未解释 ${(c.unexplained).toFixed(2)}</div>
-      ${c.note ? `<div class="cand-note">${c.note}</div>` : ""}
+      ${c.note ? `<div class="cand-note">${esc(c.note)}</div>` : ""}
       ${evItems ? `<details><summary>证据映射（诊断波段）</summary><ul class="ev-list">${evItems}</ul></details>` : ""}`;
     wrap.appendChild(div);
   });
@@ -217,20 +238,22 @@ function renderReport(rep) {
     modeChip.textContent = "确定性报告";
     modeChip.className = "chip small off";
   }
+  // report text can originate from an LLM (prompt-injectable via crafted
+  // spectra/filenames) — every string goes through esc() before innerHTML
   const sec = (title, items) =>
     items && items.length
-      ? `<div class="rp-sec"><h4>${title}</h4><ul>${items.map((x) => `<li>${x}</li>`).join("")}</ul></div>`
+      ? `<div class="rp-sec"><h4>${esc(title)}</h4><ul>${items.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>`
       : "";
-  let html = `<h3 class="rp-headline">${rep.headline || ""}</h3>`;
+  let html = `<h3 class="rp-headline">${esc(rep.headline || "")}</h3>`;
   html += sec("推理链", rep.reasoning);
   if (rep.evidence_comments && rep.evidence_comments.length) {
     html += `<div class="rp-sec"><h4>波段点评</h4><ul>` +
-      rep.evidence_comments.map((e) => `<li><b>${e.band_nm} nm</b> — ${e.comment}</li>`).join("") +
+      rep.evidence_comments.map((e) => `<li><b>${esc(e.band_nm)} nm</b> — ${esc(e.comment)}</li>`).join("") +
       `</ul></div>`;
   }
   html += sec("注意事项", rep.caveats);
   html += sec("后续建议", rep.followups);
-  if (rep.llm_error) html += `<div class="rp-err">${rep.llm_error}</div>`;
+  if (rep.llm_error) html += `<div class="rp-err">${esc(rep.llm_error)}</div>`;
   wrap.innerHTML = html;
 }
 
@@ -323,7 +346,13 @@ function bindChat() {
     e.preventDefault();
     const input = $("chat-input");
     const q = input.value.trim();
-    if (!q || state.busy) return;
+    if (!q) return;
+    if (state.chatBusy) {
+      toast("上一条还在回答中…");
+      return;
+    }
+    state.chatBusy = true;
+    $("chat-form").querySelector(".btn").disabled = true;
     input.value = "";
     appendMsg("user", q);
     const msgEl = appendMsg("bot", "……");
@@ -343,6 +372,9 @@ function bindChat() {
       state.history.push({ role: "assistant", content: resp.answer });
     } catch (err) {
       msgEl.querySelector("span.txt").textContent = `请求失败：${err.message}`;
+    } finally {
+      state.chatBusy = false;
+      $("chat-form").querySelector(".btn").disabled = false;
     }
   });
 }
