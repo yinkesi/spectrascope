@@ -1,0 +1,281 @@
+{
+  "meta": {
+    "name": "SpectraScope Reference Library v1",
+    "range_nm": [350, 2500],
+    "citation": "Diagnostic band positions compiled after R.N. Clark et al. (USGS SpecPub), G.R. Hunt (1977) JGR, and R.F. Kokaly et al. (2017) USGS DS 1035. Curves are idealized Gaussian-feature reconstructions for matching, not measured spectra.",
+    "atmospheric_noise_zones_nm": [[1330, 1480], [1780, 1980]],
+    "zones_note": "Features inside these zones are down-weighted during scoring because field VNIR-SWIR data there is corrupted by atmospheric water vapor / detector crosstalk."
+  },
+  "entries": [
+    {
+      "id": "kaolinite",
+      "name": "Kaolinite",
+      "name_cn": "高岭石",
+      "category": "phyllosilicate",
+      "category_cn": "层状硅酸盐（Al-OH 粘土）",
+      "formula": "Al2Si2O5(OH)4",
+      "note": "The 2200 nm Al-OH doublet (2200+2215 nm) is diagnostic; sharp 2160 nm shoulder helps separate it from muscovite.",
+      "continuum": [[350, 0.78], [700, 0.82], [1300, 0.84], [1800, 0.86], [2500, 0.78]],
+      "features": [
+        {"c": 1400, "w": 45, "d": 0.42, "label": "OH stretch 1st overtone", "label_cn": "羟基倍频", "diagnostic": false},
+        {"c": 2160, "w": 25, "d": 0.16, "label": "Al-OH combination (shoulder)", "label_cn": "Al-OH 合频肩部", "diagnostic": true},
+        {"c": 2200, "w": 22, "d": 0.34, "label": "Al-OH doublet main", "label_cn": "Al-OH 双峰主峰", "diagnostic": true},
+        {"c": 2350, "w": 30, "d": 0.10, "label": "Al-OH / OH combination weak", "label_cn": "Al-OH 弱合频", "diagnostic": false}
+      ]
+    },
+    {
+      "id": "alunite",
+      "name": "Alunite",
+      "name_cn": "明矾石",
+      "category": "sulfate",
+      "category_cn": "硫酸盐",
+      "formula": "KAl3(SO4)2(OH)6",
+      "note": "Al-OH band shifts shortward to ~2170 nm — the classic acid-sulfate alteration indicator.",
+      "continuum": [[350, 0.72], [700, 0.78], [1300, 0.80], [1800, 0.82], [2500, 0.74]],
+      "features": [
+        {"c": 1400, "w": 50, "d": 0.38, "label": "OH stretch", "label_cn": "羟基伸缩", "diagnostic": false},
+        {"c": 2170, "w": 28, "d": 0.30, "label": "Al-OH combination (short-shifted)", "label_cn": "Al-OH 合频（短移）", "diagnostic": true},
+        {"c": 2320, "w": 35, "d": 0.08, "label": "weak combination", "label_cn": "弱合频", "diagnostic": false}
+      ]
+    },
+    {
+      "id": "muscovite",
+      "name": "Muscovite / Illite",
+      "name_cn": "白云母 / 伊利石",
+      "category": "phyllosilicate",
+      "category_cn": "层状硅酸盐（Al-OH 白云母类）",
+      "formula": "KAl2(AlSi3O10)(OH)2",
+      "note": "2200 nm Al-OH plus a distinctive 2350–2450 nm combination pair separates it from kaolinite.",
+      "continuum": [[350, 0.70], [700, 0.76], [1300, 0.78], [1800, 0.80], [2500, 0.72]],
+      "features": [
+        {"c": 1400, "w": 45, "d": 0.40, "label": "OH stretch", "label_cn": "羟基伸缩", "diagnostic": false},
+        {"c": 2200, "w": 28, "d": 0.30, "label": "Al-OH combination", "label_cn": "Al-OH 合频", "diagnostic": true},
+        {"c": 2350, "w": 35, "d": 0.15, "label": "Al-OH combination 2", "label_cn": "Al-OH 合频 2", "diagnostic": true},
+        {"c": 2440, "w": 40, "d": 0.08, "label": "Al-OH combination 3", "label_cn": "Al-OH 合频 3", "diagnostic": false}
+      ]
+    },
+    {
+      "id": "calcite",
+      "name": "Calcite",
+      "name_cn": "方解石",
+      "category": "carbonate",
+      "category_cn": "碳酸盐",
+      "formula": "CaCO3",
+      "note": "Strong 2335 nm CO3 combination; 2120 nm shoulder and weak hydration bands near 1400/1900 nm.",
+      "continuum": [[350, 0.68], [700, 0.76], [1300, 0.80], [1800, 0.80], [2500, 0.70]],
+      "features": [
+        {"c": 1400, "w": 50, "d": 0.14, "label": "hydration OH (inclusions)", "label_cn": "包裹体水", "diagnostic": false},
+        {"c": 1870, "w": 60, "d": 0.10, "label": "hydration water", "label_cn": "包体水", "diagnostic": false},
+        {"c": 2120, "w": 30, "d": 0.06, "label": "CO3 combination shoulder", "label_cn": "CO3 合频肩", "diagnostic": true},
+        {"c": 2335, "w": 35, "d": 0.46, "label": "CO3 fundamental combination", "label_cn": "CO3 基频合频", "diagnostic": true}
+      ]
+    },
+    {
+      "id": "dolomite",
+      "name": "Dolomite",
+      "name_cn": "白云石",
+      "category": "carbonate",
+      "category_cn": "碳酸盐",
+      "formula": "CaMg(CO3)2",
+      "note": "CO3 band at ~2325 nm, ~10 nm short of calcite — subtle but resolvable at high SNR.",
+      "continuum": [[350, 0.64], [700, 0.72], [1300, 0.76], [1800, 0.76], [2500, 0.66]],
+      "features": [
+        {"c": 1400, "w": 50, "d": 0.14, "label": "hydration OH", "label_cn": "包裹体水", "diagnostic": false},
+        {"c": 2215, "w": 30, "d": 0.08, "label": "weak Mg-OH/CO3", "label_cn": "弱 Mg-OH/CO3", "diagnostic": false},
+        {"c": 2325, "w": 35, "d": 0.42, "label": "CO3 combination (Mg-shifted)", "label_cn": "CO3 合频（Mg 致短移）", "diagnostic": true}
+      ]
+    },
+    {
+      "id": "gypsum",
+      "name": "Gypsum",
+      "name_cn": "石膏",
+      "category": "sulfate",
+      "category_cn": "硫酸盐（蒸发岩）",
+      "formula": "CaSO4·2H2O",
+      "note": "Bound-water triplet 1450/1750/1950 nm plus a 2200 nm OH combination — evaporite signature.",
+      "continuum": [[350, 0.66], [700, 0.74], [1300, 0.78], [1800, 0.76], [2500, 0.66]],
+      "features": [
+        {"c": 1450, "w": 60, "d": 0.28, "label": "bound H2O", "label_cn": "结晶水", "diagnostic": true},
+        {"c": 1750, "w": 50, "d": 0.24, "label": "bound H2O 2", "label_cn": "结晶水 2", "diagnostic": true},
+        {"c": 1950, "w": 70, "d": 0.24, "label": "bound H2O 3", "label_cn": "结晶水 3", "diagnostic": false},
+        {"c": 2200, "w": 40, "d": 0.12, "label": "OH combination", "label_cn": "OH 合频", "diagnostic": false},
+        {"c": 2300, "w": 40, "d": 0.10, "label": "SO4/H2O combination", "label_cn": "SO4/H2O 合频", "diagnostic": false}
+      ]
+    },
+    {
+      "id": "hematite",
+      "name": "Hematite",
+      "name_cn": "赤铁矿",
+      "category": "oxide",
+      "category_cn": "氧化物（Fe3+）",
+      "formula": "Fe2O3",
+      "note": "Broad Fe3+ absorption near 860–900 nm plus steep visible reflectance rise from charge-transfer suppression.",
+      "continuum": [[350, 0.10], [550, 0.22], [760, 0.44], [1300, 0.46], [1800, 0.42], [2500, 0.36]],
+      "features": [
+        {"c": 540, "w": 170, "d": 0.35, "label": "Fe3+ charge transfer / 2B1g", "label_cn": "Fe3+ 电荷转移", "diagnostic": false},
+        {"c": 880, "w": 190, "d": 0.30, "label": "Fe3+ 6A1->4T2 pill-box", "label_cn": "Fe3+ 晶体场吸收", "diagnostic": true},
+        {"c": 2250, "w": 45, "d": 0.06, "label": "weak OH on coatings", "label_cn": "被膜弱 OH", "diagnostic": false}
+      ]
+    },
+    {
+      "id": "goethite",
+      "name": "Goethite",
+      "name_cn": "针铁矿",
+      "category": "oxide",
+      "category_cn": "氧化物（Fe3+）",
+      "formula": "FeO(OH)",
+      "note": "Fe3+ band centered nearer 920 nm than hematite, plus a weak 2280 nm OH combination.",
+      "continuum": [[350, 0.08], [550, 0.20], [780, 0.42], [1300, 0.44], [1800, 0.40], [2500, 0.34]],
+      "features": [
+        {"c": 500, "w": 150, "d": 0.30, "label": "Fe3+ charge transfer", "label_cn": "Fe3+ 电荷转移", "diagnostic": false},
+        {"c": 920, "w": 180, "d": 0.30, "label": "Fe3+ crystal field", "label_cn": "Fe3+ 晶体场吸收", "diagnostic": true},
+        {"c": 2280, "w": 50, "d": 0.08, "label": "Fe-OH combination", "label_cn": "Fe-OH 合频", "diagnostic": true}
+      ]
+    },
+    {
+      "id": "chlorite",
+      "name": "Chlorite",
+      "name_cn": "绿泥石",
+      "category": "phyllosilicate",
+      "category_cn": "层状硅酸盐（Fe-Mg-OH）",
+      "formula": "(Mg,Fe,Al)6[(Si,Al)4O10](OH)8",
+      "note": "Fe-Mg-OH combination at ~2255 nm (between the Al-OH 2200 and carbonate 2330 clusters).",
+      "continuum": [[350, 0.45], [700, 0.52], [1300, 0.56], [1800, 0.54], [2500, 0.46]],
+      "features": [
+        {"c": 1400, "w": 45, "d": 0.32, "label": "OH stretch", "label_cn": "羟基伸缩", "diagnostic": false},
+        {"c": 2255, "w": 30, "d": 0.24, "label": "Fe-Mg-OH combination", "label_cn": "Fe-Mg-OH 合频", "diagnostic": true},
+        {"c": 2320, "w": 35, "d": 0.11, "label": "weak Mg-OH 2", "label_cn": "弱 Mg-OH", "diagnostic": false}
+      ]
+    },
+    {
+      "id": "epidote",
+      "name": "Epidote",
+      "name_cn": "绿帘石",
+      "category": "sorosilicate",
+      "category_cn": "岛状硅酸盐（Ca-Fe-Al）",
+      "formula": "Ca2(Al,Fe)3(SiO4)3(OH)",
+      "note": "2250 nm Fe-OH plus unusually strong 2335 nm pair — propylitic alteration indicator.",
+      "continuum": [[350, 0.42], [700, 0.50], [1300, 0.54], [1800, 0.52], [2500, 0.44]],
+      "features": [
+        {"c": 1400, "w": 45, "d": 0.28, "label": "OH stretch", "label_cn": "羟基伸缩", "diagnostic": false},
+        {"c": 2250, "w": 35, "d": 0.22, "label": "Fe3+-OH combination", "label_cn": "Fe-OH 合频", "diagnostic": true},
+        {"c": 2335, "w": 40, "d": 0.16, "label": "OH/M-OH combination 2", "label_cn": "M-OH 合频 2", "diagnostic": true}
+      ]
+    },
+    {
+      "id": "green_vegetation",
+      "name": "Green vegetation",
+      "name_cn": "绿色植被",
+      "category": "vegetation",
+      "category_cn": "植被（光合有效）",
+      "formula": "chlorophyll + leaf water + cellulose",
+      "note": "Chlorophyll wells at 470/670 nm, red edge 700–780 nm, leaf-water bands 970–1950 nm, lignocellulose 2100/2300 nm.",
+      "continuum": [[350, 0.06], [520, 0.055], [670, 0.05], [700, 0.10], [760, 0.44], [1100, 0.48], [1300, 0.40], [1800, 0.28], [2500, 0.20]],
+      "features": [
+        {"c": 470, "w": 60, "d": 0.40, "label": "chlorophyll-a/b Soret", "label_cn": "叶绿素索瑞峰", "diagnostic": true},
+        {"c": 670, "w": 50, "d": 0.68, "label": "chlorophyll-a red well", "label_cn": "叶绿素红谷", "diagnostic": true},
+        {"c": 980, "w": 60, "d": 0.14, "label": "leaf water I", "label_cn": "叶片水 I", "diagnostic": false},
+        {"c": 1200, "w": 60, "d": 0.18, "label": "leaf water II", "label_cn": "叶片水 II", "diagnostic": false},
+        {"c": 1450, "w": 80, "d": 0.50, "label": "leaf water III", "label_cn": "叶片水 III", "diagnostic": false},
+        {"c": 1950, "w": 100, "d": 0.52, "label": "leaf water IV", "label_cn": "叶片水 IV", "diagnostic": false},
+        {"c": 2110, "w": 45, "d": 0.10, "label": "lignocellulose N-H/O-H", "label_cn": "木质纤维素合频", "diagnostic": true},
+        {"c": 2310, "w": 55, "d": 0.12, "label": "lignocellulose C-H", "label_cn": "木质素 C-H", "diagnostic": false}
+      ]
+    },
+    {
+      "id": "dry_grass",
+      "name": "Non-photosynthetic vegetation",
+      "name_cn": "枯草 / 非光合植被",
+      "category": "vegetation",
+      "category_cn": "植被（枯黄）",
+      "formula": "cellulose + lignin",
+      "note": "Bright, monotonically declining curve; no red edge; cellulose-lignin 1730/2100/2310 nm remain.",
+      "continuum": [[350, 0.30], [700, 0.40], [1300, 0.44], [1800, 0.34], [2500, 0.22]],
+      "features": [
+        {"c": 1480, "w": 80, "d": 0.22, "label": "residual water", "label_cn": "残余水", "diagnostic": false},
+        {"c": 1730, "w": 40, "d": 0.18, "label": "cellulose C-H first overtone", "label_cn": "纤维素 C-H 倍频", "diagnostic": true},
+        {"c": 2100, "w": 50, "d": 0.15, "label": "cellulose O-H/C-H", "label_cn": "纤维素合频", "diagnostic": true},
+        {"c": 2310, "w": 60, "d": 0.14, "label": "lignin C-H combination", "label_cn": "木质素 C-H 合频", "diagnostic": true}
+      ]
+    },
+    {
+      "id": "water",
+      "name": "Clear water",
+      "name_cn": "清洁水体",
+      "category": "water",
+      "category_cn": "水体",
+      "formula": "H2O",
+      "note": "NIR reflectance collapses near zero; water bands at 970/1200/1450/1950 nm deepen with path length.",
+      "continuum": [[350, 0.07], [700, 0.06], [1000, 0.03], [1350, 0.015], [1800, 0.006], [2500, 0.004]],
+      "features": [
+        {"c": 760, "w": 90, "d": 0.06, "label": "weak H2O", "label_cn": "弱水吸收", "diagnostic": false},
+        {"c": 970, "w": 60, "d": 0.16, "label": "H2O I", "label_cn": "水 I", "diagnostic": true},
+        {"c": 1200, "w": 80, "d": 0.28, "label": "H2O II", "label_cn": "水 II", "diagnostic": true},
+        {"c": 1450, "w": 100, "d": 0.60, "label": "H2O III", "label_cn": "水 III", "diagnostic": false},
+        {"c": 1950, "w": 120, "d": 0.80, "label": "H2O IV", "label_cn": "水 IV", "diagnostic": false}
+      ]
+    },
+    {
+      "id": "snow",
+      "name": "Snow / firn",
+      "name_cn": "积雪",
+      "category": "ice",
+      "category_cn": "冰雪",
+      "formula": "H2O (ice)",
+      "note": "Very high visible albedo, ice absorption growing from ~1030 nm outward.",
+      "continuum": [[350, 0.92], [700, 0.90], [1000, 0.80], [1350, 0.45], [1800, 0.10], [2500, 0.03]],
+      "features": [
+        {"c": 1030, "w": 60, "d": 0.12, "label": "ice I", "label_cn": "冰 I", "diagnostic": true},
+        {"c": 1250, "w": 80, "d": 0.25, "label": "ice II", "label_cn": "冰 II", "diagnostic": true},
+        {"c": 1500, "w": 100, "d": 0.55, "label": "ice III", "label_cn": "冰 III", "diagnostic": false},
+        {"c": 1950, "w": 120, "d": 0.75, "label": "ice IV", "label_cn": "冰 IV", "diagnostic": false}
+      ]
+    },
+    {
+      "id": "iron_soil",
+      "name": "Iron-rich soil",
+      "name_cn": "富铁土壤",
+      "category": "soil",
+      "category_cn": "土壤（红壤/富铁）",
+      "formula": "Fe-oxide + clay matrix",
+      "note": "Broad Fe3+ shoulder plus generic clay-water bands; a mixtures-dominated background class.",
+      "continuum": [[350, 0.12], [600, 0.20], [800, 0.30], [1300, 0.32], [1800, 0.28], [2500, 0.22]],
+      "features": [
+        {"c": 880, "w": 200, "d": 0.22, "label": "Fe3+ crystal field (broad)", "label_cn": "Fe3+ 宽吸收", "diagnostic": true},
+        {"c": 1450, "w": 70, "d": 0.18, "label": "soil moisture", "label_cn": "土壤水", "diagnostic": false},
+        {"c": 2205, "w": 30, "d": 0.14, "label": "clay Al-OH", "label_cn": "粘土 Al-OH", "diagnostic": true},
+        {"c": 2350, "w": 40, "d": 0.08, "label": "carbonate/clay mix", "label_cn": "碳酸盐/粘土混合", "diagnostic": false}
+      ]
+    },
+    {
+      "id": "concrete",
+      "name": "Concrete",
+      "name_cn": "混凝土",
+      "category": "urban",
+      "category_cn": "城市不透水面",
+      "formula": "cement + carbonate aggregate",
+      "note": "Gray, mildly sloped curve; water-cement bands plus carbonate aggregate near 2335 nm.",
+      "continuum": [[350, 0.34], [700, 0.40], [1300, 0.44], [1800, 0.40], [2500, 0.32]],
+      "features": [
+        {"c": 1450, "w": 60, "d": 0.10, "label": "cement hydration water", "label_cn": "水泥结合水", "diagnostic": false},
+        {"c": 1940, "w": 80, "d": 0.12, "label": "cement water II", "label_cn": "水泥结合水 II", "diagnostic": false},
+        {"c": 2335, "w": 40, "d": 0.15, "label": "carbonate aggregate CO3", "label_cn": "骨料 CO3", "diagnostic": true}
+      ]
+    },
+    {
+      "id": "asphalt",
+      "name": "Asphalt",
+      "name_cn": "沥青路面",
+      "category": "urban",
+      "category_cn": "城市不透水面",
+      "formula": "bitumen + aggregate",
+      "note": "Dark and nearly featureless — the classic low-albedo flat reference for urban classification.",
+      "continuum": [[350, 0.10], [700, 0.11], [1300, 0.12], [1800, 0.10], [2500, 0.08]],
+      "features": [
+        {"c": 1450, "w": 60, "d": 0.04, "label": "trace water", "label_cn": "微量水", "diagnostic": false},
+        {"c": 1940, "w": 80, "d": 0.05, "label": "trace water II", "label_cn": "微量水 II", "diagnostic": false},
+        {"c": 2310, "w": 60, "d": 0.04, "label": "bitumen C-H", "label_cn": "沥青 C-H", "diagnostic": false}
+      ]
+    }
+  ]
+}

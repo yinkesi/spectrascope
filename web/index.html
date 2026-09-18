@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SpectraScope · 野外光谱智能判读台</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23f4eede'/%3E%3Cpath d='M2 22 Q8 10 16 16 T30 12' stroke='%23c2442a' stroke-width='2.5' fill='none'/%3E%3C/svg%3E">
+</head>
+<body>
+<div class="topo-bg" aria-hidden="true"></div>
+
+<header class="masthead">
+  <div class="mast-left">
+    <div class="wordmark">SPECTRA<span class="mark">SCOPE</span></div>
+    <div class="subtitle">野外光谱智能判读台 · Agentic VNIR–SWIR Spectral Interpreter</div>
+  </div>
+  <div class="mast-right">
+    <span id="agent-chip" class="chip">检测中…</span>
+    <button id="btn-settings" class="btn ghost" type="button">智能体设置</button>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- ============ 输入列 ============ -->
+  <section class="card input-card">
+    <h2 class="card-title">① 输入光谱</h2>
+    <div id="dropzone" class="dropzone" tabindex="0">
+      <div class="dz-icon">⌁</div>
+      <div class="dz-main">拖入光谱文件，或点击选择</div>
+      <div class="dz-sub">CSV / TXT · 两列：波长(nm 或 µm) + 反射率</div>
+      <input type="file" id="file-input" accept=".csv,.txt,.tsv,.sed,.asd" hidden>
+    </div>
+    <div class="divider"><span>或使用内置演示样例</span></div>
+    <div id="demo-list" class="demo-list"></div>
+    <div class="divider"><span>参考库端元（17 类）</span></div>
+    <div id="library-list" class="library-list"></div>
+  </section>
+
+  <!-- ============ 图表列 ============ -->
+  <section class="card chart-card">
+    <div class="chart-head">
+      <h2 class="card-title">② 光谱判读图</h2>
+      <div class="legend">
+        <span class="lg"><i class="sw sw-rf"></i>反射率</span>
+        <span class="lg"><i class="sw sw-cont"></i>连续统（凸包）</span>
+        <span class="lg"><i class="sw sw-cr"></i>连续统去除</span>
+        <span class="lg"><i class="sw sw-feat"></i>检出吸收特征</span>
+        <span class="lg"><i class="sw sw-atm"></i>大气干扰区</span>
+      </div>
+    </div>
+    <div id="chart-wrap" class="chart-wrap">
+      <svg id="chart" viewBox="0 0 1000 560" preserveAspectRatio="xMidYMid meet"></svg>
+      <div id="chart-empty" class="chart-empty">
+        <div class="ce-mark">◔</div>
+        <div>上传或选择一条光谱后开始判读</div>
+      </div>
+      <div id="chart-loading" class="chart-loading hidden"><span class="spin"></span>管线运行中…</div>
+    </div>
+    <div id="sample-note" class="sample-note hidden"></div>
+  </section>
+
+  <!-- ============ 候选列 ============ -->
+  <section class="card cand-card">
+    <h2 class="card-title">③ 匹配候选</h2>
+    <div id="candidates" class="candidates"><div class="placeholder">等待分析…</div></div>
+    <h2 class="card-title mt">④ 检出特征表</h2>
+    <div id="feature-table" class="feature-table"><div class="placeholder">等待分析…</div></div>
+  </section>
+</main>
+
+<!-- ============ 报告 + 对话 ============ -->
+<section class="report-row">
+  <div class="card report-card">
+    <div class="report-head">
+      <h2 class="card-title">⑤ 判读报告</h2>
+      <span id="report-mode" class="chip small hidden"></span>
+    </div>
+    <div id="report" class="report"><div class="placeholder">等待分析…</div></div>
+  </div>
+  <div class="card chat-card">
+    <h2 class="card-title">⑥ 追问智能体</h2>
+    <div id="chat-log" class="chat-log"><div class="placeholder">判读完成后可就结果继续提问（需配置 LLM 端点）。</div></div>
+    <form id="chat-form" class="chat-form">
+      <input id="chat-input" type="text" placeholder="例如：为什么排除白云母？再测一次要注意什么？" autocomplete="off">
+      <button class="btn primary" type="submit">发送</button>
+    </form>
+  </div>
+</section>
+
+<footer class="foot">
+  SpectraScope · 连续统去除 + 峰值显著性特征提取 + 一对一特征拟合匹配 · 智能体仅做受约束的鉴别诊断叙事，不产生数值 ·
+  诊断波段据 Clark et al. (USGS) / Hunt (1977) 编纂
+</footer>
+
+<!-- 设置弹窗 -->
+<div id="settings-modal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3>智能体设置（OpenAI 兼容端点）</h3>
+      <button id="btn-close-settings" class="btn ghost" type="button">✕</button>
+    </div>
+    <label class="field"><span>Base URL</span><input id="set-base" type="text" placeholder="http://127.0.0.1:8080/v1"></label>
+    <label class="field"><span>API Key（可空）</span><input id="set-key" type="password" placeholder="本地服务通常不需要"></label>
+    <label class="field"><span>模型名（可空 = 服务默认）</span><input id="set-model" type="text" placeholder="如 glm-4-flash / minicpm5…"></label>
+    <div class="modal-actions">
+      <button id="btn-clear-settings" class="btn ghost" type="button">清除（回到确定性模式）</button>
+      <button id="btn-save-settings" class="btn primary" type="button">保存并刷新状态</button>
+    </div>
+    <p class="modal-note">配置只保存在浏览器本地，随每次请求发送到本服务；服务端 env（SPECTRASCOPE_LLM_BASE_URL 等）作为缺省。兼容 llama.cpp / vLLM / Zhipu / OpenAI。</p>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+<script src="app.js"></script>
+</body>
+</html>
